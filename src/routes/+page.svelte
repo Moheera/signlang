@@ -33,11 +33,11 @@ async function setupCamera() {
 
 async function detectHands() {
     if (!model || !video.videoWidth || !video.videoHeight) return;
-    const predictionsArray = await model.estimateHands(video);
+    const predictionsArray = await model.estimateHands(video, true); // Detect multiple hands
     predictions = predictionsArray;
     
     if (predictionsArray.length > 0) {
-        detectedGesture = recognizeGesture(predictionsArray[0].landmarks);
+        detectedGesture = recognizeGesture(predictionsArray);
     } else {
         detectedGesture = "No hand detected";
     }
@@ -45,7 +45,14 @@ async function detectHands() {
     requestAnimationFrame(detectHands);
 }
 
-function recognizeGesture(landmarks: any | any[]) {
+function recognizeGesture(hands: any[]) {
+    if (!hands || hands.length === 0) return "Unknown";
+    
+    const gestures: any = hands.map((hand: { landmarks: any; }) => identifyHandGesture(hand.landmarks));
+    return gestures.length === 2 ? recognizeTwoHandGestures(gestures) : gestures[0];
+}
+
+function identifyHandGesture(landmarks: any | any[]) {
     if (!landmarks || landmarks.length < 21) return "Unknown";
     
     const fingers = getFingerStates(landmarks);
@@ -54,18 +61,26 @@ function recognizeGesture(landmarks: any | any[]) {
         return "Open Hand";
     }
     if (fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
-        return "Thumbs Up";
+        return "Thumbs Up (Yes)";
+    }
+    if (!fingers.thumb && fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
+        return "No (Index Finger Shaking)";
     }
     if (!fingers.thumb && !fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
-        return "Fist";
-    }
-    if (fingers.index && !fingers.middle && !fingers.ring && !fingers.pinky) {
-        return "Pointing Up";
+        return "Fist (Sorry)";
     }
     if (fingers.index && fingers.middle && !fingers.ring && !fingers.pinky) {
-        return "Peace Sign";
+        return "Peace Sign (Play)";
     }
     return "Unknown";
+}
+
+function recognizeTwoHandGestures(gestures: [any, any]) {
+    const [gesture1, gesture2] = gestures;
+    if (gesture1 === "Open Hand" && gesture2 === "Open Hand") return "All Done";
+    if (gesture1 === "Fist (Sorry)" && gesture2 === "Fist (Sorry)") return "More";
+    if (gesture1 === "Thumbs Up (Yes)" && gesture2 === "Thumbs Up (Yes)") return "Help";
+    return "Unknown Two-Hand Gesture";
 }
 
 function getFingerStates(landmarks: number[][]) {
@@ -74,7 +89,7 @@ function getFingerStates(landmarks: number[][]) {
     }
     
     return {
-        thumb: landmarks[4][0] > landmarks[3][0], // Thumb extended if it's to the right of its base
+        thumb: landmarks[4][0] > landmarks[3][0],
         index: isExtended(8, 6, 5),
         middle: isExtended(12, 10, 9),
         ring: isExtended(16, 14, 13),
@@ -83,10 +98,19 @@ function getFingerStates(landmarks: number[][]) {
 }
 </script>
 
-<main class="flex flex-col gap-4 items-center justify-center h-screen bg-gray-900 text-white">
+<main class="flex flex-col items-center justify-center h-screen bg-gray-900 text-white">
     <h1 class="text-2xl font-bold">Hand Gesture Recognition</h1>
-    <p>Try open hand, thumps up, fist, pointing up, or peace sign.</p>
+    <p class="text-lg text-gray-300">Try the following gestures and see the detected result:</p>
+    <ul class="text-gray-400 text-sm mt-2">
+        <li>- Open Hand → "Open Hand"</li>
+        <li>- Two Open Hands → "All Done"</li>
+        <li>- Fist → "Fist (Sorry)"</li>
+        <li>- Two Fists → "More"</li>
+        <li>- Thumbs Up → "Yes"</li>
+        <li>- Two Thumbs Up → "Help"</li>
+        <li>- Peace Sign → "Play"</li>
+    </ul>
     <!-- svelte-ignore a11y_media_has_caption -->
-    <video id="video" class="w-96 h-72 border border-gray-400 rounded-md" autoplay></video>
-    <p class="mt-4">Detected Gesture: {detectedGesture}</p>
+    <video id="video" class="w-96 h-72 border border-gray-400 rounded-md mt-4" autoplay></video>
+    <p class="mt-4 text-lg">Detected Gesture: {detectedGesture}</p>
 </main>
